@@ -1161,7 +1161,8 @@ def _build_report_xlsx(
         for idx, t in enumerate(module.get("tasks", [])):
             is_odd = idx % 2 == 0
             fill = fill_gray if is_odd else fill_white
-            days_str = f"{t['min_days']}-{t['max_days']}"
+            avg_d = (t['min_days'] + t['max_days']) / 2
+            days_str = str(round(avg_d * K, 1))
             comment = t.get("comment", "")
             for col, val in [(2, t["specialist"]), (3, t["task"]), (4, comment), (5, days_str)]:
                 c = ws.cell(row=row, column=col, value=val)
