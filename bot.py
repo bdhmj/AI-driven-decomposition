@@ -704,18 +704,7 @@ async def _decompose(query, session: dict) -> int:
             all_tasks.append(t)
     session["all_tasks"] = all_tasks
 
-    # Show decomposition grouped by modules
-    lines = ["📋 ДЕКОМПОЗИЦИЯ ЗАДАЧ (дни min / max)", "=" * 60, ""]
-    for m in data["modules"]:
-        lines.append(f"📁 {m['name']}")
-        for t in m["tasks"]:
-            comment = f" — {t['comment']}" if t.get("comment") else ""
-            lines.append(
-                f"  • {t['task']} [{t['specialist']}] ({t['min_days']}-{t['max_days']} дн){comment}"
-            )
-        lines.append("")
-
-    # Summary: total days per specialist
+    # Summary per specialist (needed for later stages)
     spec_days: dict[str, dict] = {}
     for t in all_tasks:
         name = t["specialist"]
@@ -724,15 +713,12 @@ async def _decompose(query, session: dict) -> int:
         spec_days[name]["min"] += t["min_days"]
         spec_days[name]["max"] += t["max_days"]
 
-    lines.append("👥 СВОДКА ПО СПЕЦИАЛИСТАМ (дни без коэффициентов)")
-    lines.append("-" * 40)
-    for name, d in spec_days.items():
-        lines.append(f"  • {name}: {d['min']}-{d['max']} дней")
-    lines.append("")
-
-    text = "\n".join(lines)
-    for chunk in _split_message(text):
-        await query.message.reply_text(chunk)
+    total_tasks = len(all_tasks)
+    total_modules = len(data["modules"])
+    await query.message.reply_text(
+        f"✅ Декомпозиция готова: {total_modules} модулей, {total_tasks} задач.\n"
+        f"Подробности будут в итоговой таблице."
+    )
 
     session["spec_days"] = spec_days
 
@@ -1242,18 +1228,6 @@ def _build_estimation_sheet(
     ws.column_dimensions["F"].width = 13
     ws.column_dimensions["G"].width = 13
     ws.column_dimensions["H"].width = 15
-
-    # ── Rows 1-3: Instruction ─────────────────────────────────────────
-    ws.cell(row=2, column=2, value=(
-        "Инструкция:\n"
-        "1. Задачи оцениваются в днях/полу днях.\n"
-        "2. Столбец B — вид работ (специалист).\n"
-        "3. Если задача > 5 дней — разбить на подзадачи.\n"
-        "4. Задачи по фронтенду включают интеграцию с бэкендом.\n"
-        "5. Столбцы F/G — первичная оценка, H — с учётом коэффициента K."
-    )).font = font_normal
-    ws.cell(row=2, column=2).alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells("B2:D3")
 
     # ── Row 4: Summary headers ────────────────────────────────────────
     row = 4
