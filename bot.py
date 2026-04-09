@@ -1199,12 +1199,163 @@ def _build_report_xlsx(
 
         row += 1  # gap between module sections
 
+    # ── Sheet 2: Оценка (decomposition matching P2P reference) ──────────
+    _build_estimation_sheet(wb, modules, specialists, coeffs, K)
+
     # Save
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     buf.name = "report.xlsx"
     return buf
+
+
+def _build_estimation_sheet(
+    wb: Workbook,
+    modules: list[dict],
+    specialists: list[dict],
+    coeffs: dict,
+    K: float,
+):
+    """Add 'Оценка' sheet matching the P2P reference format."""
+    ws = wb.create_sheet("Оценка")
+
+    font_bold = Font(name="Arial", bold=True)
+    font_normal = Font(name="Arial")
+    font_header = Font(name="Arial", bold=True)
+    font_module = Font(name="Arial", size=11, bold=True)
+    font_task = Font(name="Arial", size=11)
+
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    align_right = Alignment(horizontal="right", vertical="center")
+
+    # Column widths (match reference)
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["B"].width = 19
+    ws.column_dimensions["C"].width = 25
+    ws.column_dimensions["D"].width = 29
+    ws.column_dimensions["E"].width = 10
+    ws.column_dimensions["F"].width = 13
+    ws.column_dimensions["G"].width = 13
+    ws.column_dimensions["H"].width = 15
+
+    # ── Rows 1-3: Instruction ─────────────────────────────────────────
+    ws.cell(row=2, column=2, value=(
+        "Инструкция:\n"
+        "1. Задачи оцениваются в днях/полу днях.\n"
+        "2. Столбец B — вид работ (специалист).\n"
+        "3. Если задача > 5 дней — разбить на подзадачи.\n"
+        "4. Задачи по фронтенду включают интеграцию с бэкендом.\n"
+        "5. Столбцы F/G — первичная оценка, H — с учётом коэффициента K."
+    )).font = font_normal
+    ws.cell(row=2, column=2).alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells("B2:D3")
+
+    # ── Row 4: Summary headers ────────────────────────────────────────
+    row = 4
+    for col, val in [(2, "Дни минимум"), (3, "Дни максимум"), (4, f"Недель с коф. (K={K:.2f})")]:
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = font_bold
+        c.alignment = align_center if col >= 3 else align_left
+
+    # ── Rows 5+: Summary per specialist ───────────────────────────────
+    # Collect min/max days per specialist from modules
+    spec_summary: dict[str, dict] = {}
+    for m in modules:
+        for t in m.get("tasks", []):
+            name = t["specialist"]
+            if name not in spec_summary:
+                spec_summary[name] = {"min": 0, "max": 0}
+            spec_summary[name]["min"] += t.get("min_days", 0)
+            spec_summary[name]["max"] += t.get("max_days", 0)
+
+    # Add PM/QA from specialists list if they're auto-calculated
+    for s in specialists:
+        if s["name"] not in spec_summary:
+            # Auto-calculated specialist (PM, QA auto)
+            spec_summary[s["name"]] = {
+                "min": s["days"],
+                "max": s["days"],
+            }
+
+    summary_start = 5
+    spec_num = 0
+    spec_number_map = {}  # specialist name -> number
+    for idx, (name, d) in enumerate(spec_summary.items()):
+        r = summary_start + idx
+        spec_num = idx + 1
+        spec_number_map[name] = spec_num
+        avg = (d["min"] + d["max"]) / 2
+        weeks_k = round(avg * K / 5, 2)
+        ws.cell(row=r, column=1, value=spec_num).font = font_normal
+        ws.cell(row=r, column=1).alignment = align_center
+        ws.cell(row=r, column=2, value=d["min"]).font = font_normal
+        ws.cell(row=r, column=2).alignment = align_right
+        ws.cell(row=r, column=3, value=d["max"]).font = font_normal
+        ws.cell(row=r, column=3).alignment = align_right
+        ws.cell(row=r, column=4, value=weeks_k).font = font_bold
+        ws.cell(row=r, column=4).alignment = align_right
+        # Specialist name label in col E
+        ws.cell(row=r, column=5, value=name).font = font_normal
+
+    # ── Header row for task table ─────────────────────────────────────
+    row = summary_start + len(spec_summary) + 1
+    headers = {
+        1: "Распределение работ",
+        2: "Вид работ",
+        3: "Задача",
+        4: "Комментарий",
+        6: "Минимальная оценка дни",
+        7: "Максимальная оценка дни",
+        8: "Итого с коэф.",
+    }
+    for col, val in headers.items():
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = font_header
+        c.alignment = align_center
+    row += 1
+
+    # ── Module headers and task rows ──────────────────────────────────
+    for module in modules:
+        # Module header row — merged C:D, bold
+        ws.merge_cells(f"C{row}:D{row}")
+        c = ws.cell(row=row, column=3, value=module["name"])
+        c.font = font_module
+        c.alignment = align_center
+        row += 1
+
+        for t in module.get("tasks", []):
+            spec_name = t["specialist"]
+            spec_n = spec_number_map.get(spec_name, "")
+            min_d = t.get("min_days", 0)
+            max_d = t.get("max_days", 0)
+            avg_d = (min_d + max_d) / 2
+            final_d = round(avg_d * K, 1)
+
+            ws.cell(row=row, column=1, value=spec_n).font = font_normal
+            ws.cell(row=row, column=1).alignment = align_right
+
+            c = ws.cell(row=row, column=2, value=spec_name)
+            c.font = font_bold
+            c.alignment = align_left
+
+            ws.cell(row=row, column=3, value=t["task"]).font = font_task
+            ws.cell(row=row, column=3).alignment = align_left
+
+            ws.cell(row=row, column=4, value=t.get("comment", "")).font = font_task
+            ws.cell(row=row, column=4).alignment = align_left
+
+            ws.cell(row=row, column=6, value=min_d).font = font_normal
+            ws.cell(row=row, column=6).alignment = align_center
+
+            ws.cell(row=row, column=7, value=max_d).font = font_normal
+            ws.cell(row=row, column=7).alignment = align_center
+
+            ws.cell(row=row, column=8, value=final_d).font = font_normal
+            ws.cell(row=row, column=8).alignment = align_center
+
+            row += 1
 
 
 async def cancel(update: Update, context) -> int:
