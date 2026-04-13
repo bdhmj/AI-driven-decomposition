@@ -51,7 +51,7 @@ Return: `{"sufficient": false, "questions": ["question1", "question2", ...]}`
 ## Error handling
 
 - Empty or unreadable input → respond with: "Не удалось прочитать описание проекта. Проверьте файл в input/."
-- Multiple projects in one request → analyze only the first, note: "Обнаружено несколько проектов — анализирую первый."
+- Multiple projects or mixed references in input → clarify with the user: "В input/ несколько документов. Все они относятся к одному проекту? Перечислите, какие файлы использовать." Do NOT assume — wait for confirmation.
 - Input is clearly not a project request → respond: "Входные данные не похожи на описание IT-проекта."
 
 ## Examples
