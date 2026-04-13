@@ -1,6 +1,6 @@
 ---
 name: generate-spec
-description: Generates a three-part technical specification (MVP scope, open questions, extensions checklist) from a client project request. Produces a professional document suitable for both client sign-off and developer handoff. Use when creating or revising a project spec.
+description: Generates a three-part technical specification (MVP scope, open questions, extensions checklist) from a client project request. Produces a document for client sign-off and developer handoff. Use when user says "generate spec", "create TZ", "write specification", "make a tech spec", or when moving to estimation step 2.
 metadata:
   author: np
   version: 2.0.0
@@ -20,7 +20,7 @@ This is a dual-purpose document:
 
 ## Instructions
 
-Generate a spec with exactly THREE parts. Use the structure defined in `references/spec-template.md`.
+Generate a spec with exactly THREE parts. Use the structure defined in `skills/generate-spec/references/spec-template.md`.
 
 ### Part 1: MVP — Base Scope
 
@@ -66,7 +66,7 @@ A comprehensive table of everything that could be added beyond MVP. This is NOT 
 - Internationalization, accessibility
 - Any complexity additions to base functionality
 
-Format as a table — see `references/spec-template.md` for the exact column structure.
+Format as a table — see `skills/generate-spec/references/spec-template.md` for the exact column structure.
 
 Be exhaustive. Think like a developer who has seen dozens of similar projects and knows where things typically break.
 
@@ -75,5 +75,19 @@ Be exhaustive. Think like a developer who has seen dozens of similar projects an
 - Input language may vary, but spec is ALWAYS in Russian
 - Be specific, avoid filler and vague formulations
 - Format: markdown with headings (#, ##, ###), numbered lists, and tables
-- Consult `references/spec-template.md` for the output template
+- Consult `skills/generate-spec/references/spec-template.md` for the output template
 - When revising: incorporate feedback while preserving the three-part structure
+- Expected output volume: 3-8 pages of markdown depending on project complexity
+
+## Error handling
+
+- Input is too vague for any spec (no product vision at all) → respond: "Недостаточно информации для ТЗ. Сначала запустите analyze-request."
+- Input contains contradictory requirements → note contradictions in Part 2 (open questions) and pick the most likely interpretation for Part 1
+
+## Revision workflow
+
+When the user provides feedback on a generated spec:
+1. Read the feedback carefully
+2. Regenerate the affected parts only, preserving the three-part structure
+3. Mark what changed vs previous version (add "Обновлено:" note next to changed sections)
+4. Do NOT remove items from Part 3 checklist unless explicitly asked

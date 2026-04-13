@@ -87,9 +87,10 @@ def build_spec_docx(spec_text: str) -> io.BytesIO:
             i += 1
             continue
 
-        # Bullet points
-        if stripped.startswith("- ") or stripped.startswith("• "):
-            doc.add_paragraph(stripped[2:], style="List Bullet")
+        # Bullet points (- or •, with or without space)
+        bullet_match = re.match(r"^[-•]\s?(.*)", stripped)
+        if bullet_match:
+            doc.add_paragraph(bullet_match.group(1), style="List Bullet")
             i += 1
             continue
 

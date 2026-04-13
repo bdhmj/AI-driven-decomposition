@@ -1,6 +1,6 @@
 ---
 name: analyze-request
-description: Analyzes client IT project requests for completeness. Determines if enough information exists to create a technical specification, or generates targeted clarifying questions. Use when a new project request arrives and needs initial triage.
+description: Analyzes client IT project requests for completeness. Determines if enough information exists to create a technical specification, or generates targeted clarifying questions. Use when user says "analyze request", "is this enough for a spec", "check completeness", "triage this request", or when a new project request arrives in input/.
 metadata:
   author: np
   version: 1.0.0
@@ -47,3 +47,19 @@ Return: `{"sufficient": false, "questions": ["question1", "question2", ...]}`
 - Return ONLY valid JSON — no markdown, no explanations
 - Prefer fewer, higher-impact questions over many shallow ones
 - Don't ask about things that can be reasonably assumed (e.g., "do you need a database?" for a web app)
+
+## Error handling
+
+- Empty or unreadable input → respond with: "Не удалось прочитать описание проекта. Проверьте файл в input/."
+- Multiple projects in one request → analyze only the first, note: "Обнаружено несколько проектов — анализирую первый."
+- Input is clearly not a project request → respond: "Входные данные не похожи на описание IT-проекта."
+
+## Examples
+
+### Sufficient request
+Input: "Нужно мобильное приложение для доставки еды. Клиент выбирает ресторан, собирает корзину, оплачивает онлайн. Курьер получает заказ и доставляет. Нужна админка для ресторанов."
+Output: `{"sufficient": true, "questions": []}`
+
+### Insufficient request
+Input: "Хотим сделать платформу."
+Output: `{"sufficient": false, "questions": ["Какой тип платформы вы хотите создать — веб-приложение, мобильное приложение, маркетплейс? Это определяет стек и масштаб проекта.", "Какую основную проблему должна решать платформа для пользователей? От этого зависит набор ключевых функций.", "Кто будет основными пользователями — бизнес (B2B), конечные потребители (B2C), или оба?"]}`

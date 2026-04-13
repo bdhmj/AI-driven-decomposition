@@ -240,10 +240,10 @@ def _build_gantt_sheet(wb: Workbook, modules: list[dict], K: float):
     if not scheduled_tasks:
         return
 
-    project_start = min(t[2] for t in scheduled_tasks)
+    project_start = min(t[3] for t in scheduled_tasks)
     while project_start.weekday() != 0:
         project_start -= timedelta(days=1)
-    project_end = max(t[3] for t in scheduled_tasks)
+    project_end = max(t[4] for t in scheduled_tasks)
     while project_end.weekday() != 4:
         project_end += timedelta(days=1)
 
