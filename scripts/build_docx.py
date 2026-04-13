@@ -79,10 +79,10 @@ def build_spec_docx(spec_text: str) -> io.BytesIO:
             i += 1
             continue
 
-        # Bold lines
-        if stripped.startswith("**") and stripped.endswith("**"):
+        # Bold lines (full line wrapped in **)
+        if stripped.startswith("**") and stripped.endswith("**") and len(stripped) > 4:
             p = doc.add_paragraph()
-            run = p.add_run(stripped.strip("*").strip())
+            run = p.add_run(re.sub(r"^\*\*(.*)\*\*$", r"\1", stripped))
             run.bold = True
             i += 1
             continue

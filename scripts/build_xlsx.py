@@ -1,9 +1,10 @@
 """Build project estimation .xlsx report from decomposition JSON.
 
 Usage:
-    python scripts/build_xlsx.py input/decomposition.json output/Оценка_проекта.xlsx [--coeffs K] [--margin PCT]
+    python scripts/build_xlsx.py input/decomposition.json output/Оценка_проекта.xlsx [--K 1.0] [--name "Project Name"]
 
 The JSON file should contain the decomposition output with modules/tasks/phases.
+Supports project_name field in JSON root, or --name CLI flag.
 """
 
 import io
@@ -216,7 +217,7 @@ def _build_gantt_sheet(wb: Workbook, modules: list[dict], K: float):
             if spec not in specialist_tasks:
                 specialist_tasks[spec] = []
             avg_d = (t.get("min_days", 0) + t.get("max_days", 0)) / 2
-            specialist_tasks[spec].append({"task": t["task"], "duration": max(1, round(avg_d * K))})
+            specialist_tasks[spec].append({"task": t["task"], "module": module["name"], "duration": max(1, round(avg_d * K))})
 
     if not specialist_tasks:
         return
@@ -233,7 +234,7 @@ def _build_gantt_sheet(wb: Workbook, modules: list[dict], K: float):
         for t in specialist_tasks[spec]:
             start = next_workday(current_start)
             end = add_workdays(start, t["duration"])
-            scheduled_tasks.append((spec, t["task"], start, end, t["duration"]))
+            scheduled_tasks.append((spec, t["module"], t["task"], start, end, t["duration"]))
             current_start = end + timedelta(days=1)
 
     if not scheduled_tasks:
@@ -332,7 +333,7 @@ def _build_gantt_sheet(wb: Workbook, modules: list[dict], K: float):
     # Data rows
     row = 4
     current_spec = None
-    for spec, task_name, start_dt, end_dt, duration in scheduled_tasks:
+    for spec, module_name, task_name, start_dt, end_dt, duration in scheduled_tasks:
         colors = spec_colors[spec]
         fill_phase = PatternFill(start_color=colors["fill"], end_color=colors["fill"], fill_type="solid")
         fill_bar = PatternFill(start_color=colors["bar"], end_color=colors["bar"], fill_type="solid")
@@ -351,7 +352,7 @@ def _build_gantt_sheet(wb: Workbook, modules: list[dict], K: float):
             row += 1
 
         ws.row_dimensions[row].height = 20
-        for col, val, align in [(1, spec, left_wrap), (2, spec, left_wrap), (3, task_name, left_wrap), (4, start_dt.strftime("%d.%m.%y"), center_align), (5, duration, center_align), (6, end_dt.strftime("%d.%m.%y"), center_align)]:
+        for col, val, align in [(1, module_name, left_wrap), (2, spec, left_wrap), (3, task_name, left_wrap), (4, start_dt.strftime("%d.%m.%y"), center_align), (5, duration, center_align), (6, end_dt.strftime("%d.%m.%y"), center_align)]:
             cell = ws.cell(row=row, column=col, value=val)
             cell.font = task_font
             cell.fill = fill_phase
@@ -382,7 +383,14 @@ if __name__ == "__main__":
         K = float(sys.argv[sys.argv.index("--K") + 1])
 
     modules = data.get("modules", data) if isinstance(data, dict) else data
-    result = build_report_xlsx("Проект", modules, K)
+
+    project_name = "Проект"
+    if "--name" in sys.argv:
+        project_name = sys.argv[sys.argv.index("--name") + 1]
+    elif isinstance(data, dict) and "project_name" in data:
+        project_name = data["project_name"]
+
+    result = build_report_xlsx(project_name, modules, K)
 
     with open(sys.argv[2], "wb") as f:
         f.write(result.read())

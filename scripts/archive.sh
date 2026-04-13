@@ -12,7 +12,11 @@ DIR="projects/${DATE}_${SAFE_NAME}"
 mkdir -p "$DIR"
 
 # Move input and output
-[ "$(ls -A input/ 2>/dev/null)" ] && mv input/* "$DIR/" 2>/dev/null || true
-[ "$(ls -A output/ 2>/dev/null)" ] && mv output/* "$DIR/" 2>/dev/null || true
+# Move files (excluding .gitkeep)
+find input -maxdepth 1 -not -name '.gitkeep' -not -path input -exec mv {} "$DIR/" \; 2>/dev/null || true
+find output -maxdepth 1 -not -name '.gitkeep' -not -path output -exec mv {} "$DIR/" \; 2>/dev/null || true
+
+# Ensure .gitkeep remains
+touch input/.gitkeep output/.gitkeep
 
 echo "Archived to $DIR"
