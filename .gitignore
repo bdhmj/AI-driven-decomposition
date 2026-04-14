@@ -5,3 +5,9 @@ venv/
 .venv/
 ~$*.xlsx
 .claude/
+
+# Generated files
+output/*
+!output/.gitkeep
+projects/*
+!projects/.gitkeep
