@@ -6,7 +6,9 @@ venv/
 ~$*.xlsx
 .claude/
 
-# Generated files
+# Working directories (per-project, not committed)
+input/*
+!input/.gitkeep
 output/*
 !output/.gitkeep
 projects/*
