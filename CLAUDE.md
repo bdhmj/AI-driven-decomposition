@@ -41,20 +41,34 @@ PM кидает описание проекта → Claude проходит тр
 Референс: `skills/decompose-tasks/references/estimation-guide.md`
 
 Сохрани JSON в `output/decomposition.json`.
-Для генерации .xlsx: `python scripts/build_xlsx.py output/decomposition.json output/Оценка_проекта.xlsx`
+
+### Этап 3.5: Сбор параметров оценки
+Собери у PM коэффициенты проекта, ставки специалистов и маржу. K считается автоматически.
+
+Используй скилл: `skills/collect-estimation-params/SKILL.md`
+Дефолты: `skills/collect-estimation-params/references/defaults.json`
+
+Сохрани результат в `output/estimation_params.json`.
+
+### Этап 4: Генерация .xlsx
+```bash
+python scripts/build_xlsx.py output/decomposition.json output/Оценка_проекта.xlsx --params output/estimation_params.json
+```
+Если `--params` не передан, скрипт работает в упрощённом режиме (только дни/часы, K=1.0 или `--K <val>`).
 
 ## Структура проекта
 
 ```
 input/              — описания проектов от клиентов
-output/             — результаты: spec.md, decomposition.json, .docx, .xlsx
+output/             — результаты: spec.md, decomposition.json, estimation_params.json, .docx, .xlsx
 skills/             — скиллы (промпты + референсы)
-  analyze-request/  — анализ полноты запроса
-  generate-spec/    — генерация трёхчастного ТЗ
-  decompose-tasks/  — декомпозиция на задачи
+  analyze-request/            — анализ полноты запроса
+  generate-spec/              — генерация трёхчастного ТЗ
+  decompose-tasks/            — декомпозиция на задачи
+  collect-estimation-params/  — сбор коэффициентов, ставок, маржи
 scripts/            — утилиты для генерации документов
   build_docx.py     — markdown → .docx
-  build_xlsx.py     — decomposition.json → .xlsx с GANTT
+  build_xlsx.py     — decomposition.json + estimation_params.json → .xlsx с GANTT
 ```
 
 ## Архивация проекта

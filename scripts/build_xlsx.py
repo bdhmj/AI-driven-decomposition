@@ -1,10 +1,15 @@
 """Build project estimation .xlsx report from decomposition JSON.
 
 Usage:
-    python scripts/build_xlsx.py input/decomposition.json output/Оценка_проекта.xlsx [--K 1.0] [--name "Project Name"]
+    python scripts/build_xlsx.py input/decomposition.json output/Оценка_проекта.xlsx \\
+        [--params output/estimation_params.json] [--K 1.0] [--name "Project Name"]
 
 Generates 3 sheets: "Для клиента", "Оценка", "GANTT Chart".
-Matches the original template design from the Telegram bot version.
+
+Two modes:
+  - Simple (no --params): days/hours only, K default 1.0 or via --K.
+  - Full (--params): reads coefficients, rates, margin from estimation_params.json,
+    shows monetary values (internal + client) and auto-adds PM/QA via coefficients.
 """
 
 import io
@@ -18,19 +23,137 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Helpers: K calculation and specialist aggregation with costs
+# ═══════════════════════════════════════════════════════════════════════
+
+def calc_K(coeffs: dict) -> float:
+    """Project coefficient from PM parameters.
+    qa_pct and pm_pct do NOT enter K — they are used to allocate PM/QA time separately.
+    """
+    return (
+        1
+        + coeffs.get("code_review_hours", 0) / 8
+        + coeffs.get("communication_hours", 0) / 40
+        + coeffs.get("debug_pct", 0) / 100
+        + coeffs.get("risk_buffer_pct", 0) / 100
+        + coeffs.get("devops_pct", 0) / 100
+    )
+
+
+def compute_specialists(modules: list[dict], K: float, params: dict | None = None) -> list[dict]:
+    """Aggregate per-specialist totals (days/hours/weeks/rate/cost).
+
+    Returns list of dicts: {name, days, adjusted_days, hours, weeks, rate, cost, client_rate, client_cost}
+    Keys rate/cost/client_rate/client_cost are filled only when params is provided.
+    If params is provided, PM and auto-QA (qa_pct>0) are appended to the list.
+    """
+    # Raw days from decomposition (average of min/max)
+    spec_days: dict[str, float] = {}
+    for m in modules:
+        for t in m.get("tasks", []):
+            name = t["specialist"]
+            avg = (t.get("min_days", 0) + t.get("max_days", 0)) / 2
+            spec_days[name] = spec_days.get(name, 0) + avg
+
+    specialists: list[dict] = []
+    for name, days in spec_days.items():
+        adjusted_days = days * K
+        entry = {
+            "name": name,
+            "days": round(days, 1),
+            "adjusted_days": round(adjusted_days, 1),
+            "hours": round(adjusted_days * 8, 1),
+            "weeks": round(adjusted_days / 5, 1),
+            "rate": None,
+            "cost": None,
+            "client_rate": None,
+            "client_cost": None,
+        }
+        specialists.append(entry)
+
+    if params is None:
+        return specialists
+
+    rates = params.get("rates", {})
+    coeffs = params.get("coefficients", {})
+    margin_pct = params.get("margin_pct", 0)
+
+    # Auto-add QA via qa_pct (adds on top of QA from tasks if present)
+    qa_pct = coeffs.get("qa_pct", 0)
+    if qa_pct > 0:
+        # % of all non-QA-named specialists
+        others_adj = sum(s["adjusted_days"] for s in specialists if s["name"] not in ("QA", "Manual QA"))
+        qa_extra_days = others_adj * qa_pct / 100
+        # Find or create QA entry
+        qa_entry = next((s for s in specialists if s["name"] == "QA"), None)
+        if qa_entry is None:
+            qa_entry = {
+                "name": "QA",
+                "days": 0,
+                "adjusted_days": 0,
+                "hours": 0,
+                "weeks": 0,
+                "rate": None, "cost": None, "client_rate": None, "client_cost": None,
+            }
+            specialists.append(qa_entry)
+        qa_entry["adjusted_days"] = round(qa_entry["adjusted_days"] + qa_extra_days, 1)
+        qa_entry["hours"] = round(qa_entry["adjusted_days"] * 8, 1)
+        qa_entry["weeks"] = round(qa_entry["adjusted_days"] / 5, 1)
+
+    # Auto-add PM via pm_pct (% of longest specialist's adjusted days)
+    pm_pct = coeffs.get("pm_pct", 0)
+    if pm_pct > 0 and specialists:
+        longest = max(s["adjusted_days"] for s in specialists)
+        pm_days = longest * pm_pct / 100
+        pm_entry = {
+            "name": "PM",
+            "days": round(pm_days, 1),
+            "adjusted_days": round(pm_days, 1),
+            "hours": round(pm_days * 8, 1),
+            "weeks": round(pm_days / 5, 1),
+            "rate": None, "cost": None, "client_rate": None, "client_cost": None,
+        }
+        specialists.append(pm_entry)
+
+    # Fill rates and costs
+    for s in specialists:
+        rate = rates.get(s["name"], 0)
+        s["rate"] = rate
+        s["cost"] = round(s["hours"] * rate, 2)
+        client_rate = rate * (1 + margin_pct / 100)
+        s["client_rate"] = round(client_rate, 2)
+        s["client_cost"] = round(s["hours"] * client_rate, 2)
+
+    return specialists
+
+
+# ═══════════════════════════════════════════════════════════════════════
+
 def build_report_xlsx(
     project_name: str,
     modules: list[dict],
     K: float = 1.0,
+    params: dict | None = None,
 ) -> io.BytesIO:
-    """Build client-facing xlsx report with 3 sheets."""
+    """Build client-facing xlsx report with 3 sheets.
+
+    If `params` provided, uses its coefficients (K is recomputed from them),
+    rates and margin for monetary columns. Otherwise simple days/hours mode.
+    """
+    # If params provided, K is derived from coefficients (ignore passed K)
+    if params is not None and "coefficients" in params:
+        K = calc_K(params["coefficients"])
+
+    specialists = compute_specialists(modules, K, params)
+
     wb = Workbook()
 
     # ── Sheet 1: Для клиента ─────────────────────────────────────────
-    _build_client_sheet(wb, project_name, modules, K)
+    _build_client_sheet(wb, project_name, modules, K, specialists, params)
 
     # ── Sheet 2: Оценка ──────────────────────────────────────────────
-    _build_estimation_sheet(wb, modules, K)
+    _build_estimation_sheet(wb, modules, K, specialists, params)
 
     # ── Sheet 3: GANTT Chart ─────────────────────────────────────────
     _build_gantt_sheet(wb, modules, K)
@@ -45,9 +168,19 @@ def build_report_xlsx(
 # Sheet 1: Для клиента
 # ═══════════════════════════════════════════════════════════════════════
 
-def _build_client_sheet(wb: Workbook, project_name: str, modules: list[dict], K: float):
+def _build_client_sheet(
+    wb: Workbook,
+    project_name: str,
+    modules: list[dict],
+    K: float,
+    specialists: list[dict],
+    params: dict | None = None,
+):
     ws = wb.active
     ws.title = "Для клиента"
+
+    has_money = params is not None
+    currency = (params or {}).get("currency", "$")
 
     font_title = Font(name="Montserrat", size=24)
     font_subtitle = Font(name="Montserrat", size=10)
@@ -111,60 +244,74 @@ def _build_client_sheet(wb: Workbook, project_name: str, modules: list[dict], K:
     row = 8
     ws.cell(row=row, column=2, value=f"Актуально на: {date.today().strftime('%d.%m.%Y')}").font = font_date
 
-    # Summary: compute total hours and specialists
-    spec_hours: dict[str, float] = {}
-    for m in modules:
-        for t in m.get("tasks", []):
-            name = t["specialist"]
-            avg = (t.get("min_days", 0) + t.get("max_days", 0)) / 2
-            hours = avg * K * 8
-            spec_hours[name] = spec_hours.get(name, 0) + hours
+    total_hours = sum(s["hours"] for s in specialists)
+    team_size = len(specialists)
+    total_client_cost = sum(s["client_cost"] or 0 for s in specialists) if has_money else 0
 
-    total_hours = sum(spec_hours.values())
-    team_size = len(spec_hours)
-
+    # ── Summary block (row 9-10) ──────────────────────────────────────
     row = 9
     ws.row_dimensions[row].height = 30
-    for col, val in [(2, "Команда проекта,\nчеловек"), (3, "Длительность проекта,\nчасы")]:
+    if has_money:
+        headers = [(2, "Команда проекта,\nчеловек"), (3, "Длительность проекта,\nчасы"), (4, f"Стоимость, {currency}")]
+    else:
+        headers = [(2, "Команда проекта,\nчеловек"), (3, "Длительность проекта,\nчасы")]
+    for col, val in headers:
         c = ws.cell(row=row, column=col, value=val)
         c.font = font_header
         c.fill = fill_orange
         c.alignment = align_center
-    _apply_outer_border(ws, 9, 9, 2, 3)
+    _apply_outer_border(ws, 9, 9, 2, 4 if has_money else 3)
 
     row = 10
     ws.row_dimensions[row].height = 15
-    for col, val in [(2, team_size), (3, round(total_hours))]:
+    if has_money:
+        values = [(2, team_size), (3, round(total_hours)), (4, round(total_client_cost))]
+    else:
+        values = [(2, team_size), (3, round(total_hours))]
+    for col, val in values:
         c = ws.cell(row=row, column=col, value=val)
         c.font = font_normal
         c.alignment = align_center
-    _apply_outer_border(ws, 10, 10, 2, 3)
+    _apply_outer_border(ws, 10, 10, 2, 4 if has_money else 3)
 
-    # Specialists table
+    # ── Specialists table ─────────────────────────────────────────────
     row = 12
     ws.row_dimensions[row].height = 15
-    for col, val in [(2, "Специалисты"), (3, "Занятость, недели"), (4, "Занятость, часы")]:
+    if has_money:
+        headers = [
+            (2, "Специалисты"),
+            (3, "Занятость, недели"),
+            (4, "Занятость, часы"),
+            (5, f"Стоимость, {currency}"),
+        ]
+        last_col = 5
+    else:
+        headers = [(2, "Специалисты"), (3, "Занятость, недели"), (4, "Занятость, часы")]
+        last_col = 4
+    for col, val in headers:
         c = ws.cell(row=row, column=col, value=val)
         c.font = font_header
         c.fill = fill_orange
         c.alignment = align_center
-    _apply_outer_border(ws, 12, 12, 2, 4)
+    _apply_outer_border(ws, 12, 12, 2, last_col)
 
     spec_start_row = row + 1
-    for idx, (name, hours) in enumerate(spec_hours.items()):
+    for idx, s in enumerate(specialists):
         row = spec_start_row + idx
-        weeks = round(hours / 40, 1)
         fill = fill_gray if idx % 2 == 0 else fill_white
-        for col, val in [(2, name), (3, weeks), (4, round(hours))]:
+        row_values = [(2, s["name"]), (3, s["weeks"]), (4, round(s["hours"]))]
+        if has_money:
+            row_values.append((5, round(s["client_cost"])))
+        for col, val in row_values:
             c = ws.cell(row=row, column=col, value=val)
             c.font = font_normal
             c.fill = fill
             c.alignment = align_center if col >= 3 else align_left
         ws.cell(row=row, column=2).border = Border(left=Side("thin"))
-        ws.cell(row=row, column=4).border = Border(right=Side("thin"))
+        ws.cell(row=row, column=last_col).border = Border(right=Side("thin"))
 
-    last_spec_row = spec_start_row + len(spec_hours) - 1
-    for c in range(2, 5):
+    last_spec_row = spec_start_row + len(specialists) - 1
+    for c in range(2, last_col + 1):
         cell = ws.cell(row=last_spec_row, column=c)
         existing = cell.border
         cell.border = Border(left=existing.left, right=existing.right, top=existing.top, bottom=Side("thin"))
@@ -214,8 +361,17 @@ def _build_client_sheet(wb: Workbook, project_name: str, modules: list[dict], K:
 # Sheet 2: Оценка
 # ═══════════════════════════════════════════════════════════════════════
 
-def _build_estimation_sheet(wb: Workbook, modules: list[dict], K: float):
+def _build_estimation_sheet(
+    wb: Workbook,
+    modules: list[dict],
+    K: float,
+    specialists: list[dict],
+    params: dict | None = None,
+):
     ws = wb.create_sheet("Оценка")
+
+    has_money = params is not None
+    currency = (params or {}).get("currency", "$")
 
     font_bold = Font(name="Arial", bold=True)
     font_normal = Font(name="Arial")
@@ -238,41 +394,72 @@ def _build_estimation_sheet(wb: Workbook, modules: list[dict], K: float):
 
     # Summary headers
     row = 4
-    for col, val in [(2, "Дни минимум"), (3, "Дни максимум"), (4, f"Недель с коф. (K={K:.2f})")]:
+    summary_headers = [(2, "Дни минимум"), (3, "Дни максимум"), (4, f"Недель с коф. (K={K:.2f})")]
+    if has_money:
+        summary_headers += [
+            (6, f"Ставка, {currency}/час"),
+            (7, f"Стоимость, {currency}"),
+        ]
+    for col, val in summary_headers:
         c = ws.cell(row=row, column=col, value=val)
         c.font = font_bold
         c.alignment = align_center if col >= 3 else align_left
 
-    # Summary per specialist
-    spec_summary: dict[str, dict] = {}
+    # Per-specialist summary (min/max from tasks, adjusted weeks, optional rate/cost)
+    # Min/max raw days need to come from modules (tasks), not from `specialists`
+    # because specialists list may include auto-added PM/QA.
+    raw_days: dict[str, dict] = {}
     for m in modules:
         for t in m.get("tasks", []):
             name = t["specialist"]
-            if name not in spec_summary:
-                spec_summary[name] = {"min": 0, "max": 0}
-            spec_summary[name]["min"] += t.get("min_days", 0)
-            spec_summary[name]["max"] += t.get("max_days", 0)
+            if name not in raw_days:
+                raw_days[name] = {"min": 0, "max": 0}
+            raw_days[name]["min"] += t.get("min_days", 0)
+            raw_days[name]["max"] += t.get("max_days", 0)
 
     summary_start = 5
     spec_number_map = {}
-    for idx, (name, d) in enumerate(spec_summary.items()):
+    for idx, s in enumerate(specialists):
         r = summary_start + idx
         spec_num = idx + 1
-        spec_number_map[name] = spec_num
-        avg = (d["min"] + d["max"]) / 2
-        weeks_k = round(avg * K / 5, 2)
+        spec_number_map[s["name"]] = spec_num
+        raw = raw_days.get(s["name"], {"min": s["adjusted_days"] / K if K else 0, "max": s["adjusted_days"] / K if K else 0})
+        weeks_k = s["weeks"]
         ws.cell(row=r, column=1, value=spec_num).font = font_normal
         ws.cell(row=r, column=1).alignment = align_center
-        ws.cell(row=r, column=2, value=d["min"]).font = font_normal
+        ws.cell(row=r, column=2, value=round(raw["min"], 1)).font = font_normal
         ws.cell(row=r, column=2).alignment = align_right
-        ws.cell(row=r, column=3, value=d["max"]).font = font_normal
+        ws.cell(row=r, column=3, value=round(raw["max"], 1)).font = font_normal
         ws.cell(row=r, column=3).alignment = align_right
         ws.cell(row=r, column=4, value=weeks_k).font = font_bold
         ws.cell(row=r, column=4).alignment = align_right
-        ws.cell(row=r, column=5, value=name).font = font_normal
+        ws.cell(row=r, column=5, value=s["name"]).font = font_normal
+        if has_money:
+            ws.cell(row=r, column=6, value=s["rate"]).font = font_normal
+            ws.cell(row=r, column=6).alignment = align_right
+            ws.cell(row=r, column=7, value=round(s["cost"])).font = font_bold
+            ws.cell(row=r, column=7).alignment = align_right
 
-    # Header row for task table
-    row = summary_start + len(spec_summary) + 1
+    # Totals row (only when has_money)
+    if has_money and specialists:
+        total_row = summary_start + len(specialists)
+        ws.cell(row=total_row, column=5, value="Итого, внутренняя стоимость:").font = font_bold
+        ws.cell(row=total_row, column=5).alignment = align_right
+        total_internal = sum(s["cost"] or 0 for s in specialists)
+        ws.cell(row=total_row, column=7, value=round(total_internal)).font = font_bold
+        ws.cell(row=total_row, column=7).alignment = align_right
+
+        total_client_row = total_row + 1
+        margin_pct = params.get("margin_pct", 0)
+        ws.cell(row=total_client_row, column=5, value=f"Итого клиенту (маржа {margin_pct}%):").font = font_bold
+        ws.cell(row=total_client_row, column=5).alignment = align_right
+        total_client = sum(s["client_cost"] or 0 for s in specialists)
+        ws.cell(row=total_client_row, column=7, value=round(total_client)).font = font_bold
+        ws.cell(row=total_client_row, column=7).alignment = align_right
+
+    # Header row for task table (after summary + 2 total rows if money)
+    extra_total_rows = 2 if has_money else 0
+    row = summary_start + len(specialists) + extra_total_rows + 1
     headers = {1: "Распределение работ", 2: "Вид работ", 3: "Задача", 4: "Комментарий", 6: "Мин. дни", 7: "Макс. дни", 8: "Итого с коэф."}
     for col, val in headers.items():
         c = ws.cell(row=row, column=col, value=val)
@@ -572,11 +759,18 @@ def _build_gantt_sheet(wb: Workbook, modules: list[dict], K: float):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python scripts/build_xlsx.py <decomposition.json> <output.xlsx> [--K 1.0] [--name \"Project Name\"]")
+        print("Usage: python scripts/build_xlsx.py <decomposition.json> <output.xlsx> "
+              "[--params <estimation_params.json>] [--K 1.0] [--name \"Project Name\"]")
         sys.exit(1)
 
     with open(sys.argv[1], "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    params: dict | None = None
+    if "--params" in sys.argv:
+        params_path = sys.argv[sys.argv.index("--params") + 1]
+        with open(params_path, "r", encoding="utf-8") as f:
+            params = json.load(f)
 
     K = 1.0
     if "--K" in sys.argv:
@@ -590,9 +784,10 @@ if __name__ == "__main__":
     elif isinstance(data, dict) and "project_name" in data:
         project_name = data["project_name"]
 
-    result = build_report_xlsx(project_name, modules, K)
+    result = build_report_xlsx(project_name, modules, K, params)
 
     with open(sys.argv[2], "wb") as f:
         f.write(result.read())
 
-    print(f"Saved: {sys.argv[2]}")
+    mode = "full (with params)" if params else "simple (days only)"
+    print(f"Saved: {sys.argv[2]} [{mode}]")
