@@ -1,4 +1,5 @@
 {
+  "mandatory_specialists": ["PM", "DevOps", "QA"],
   "coefficients": {
     "debug_pct": 20,
     "code_review_hours": 1,
