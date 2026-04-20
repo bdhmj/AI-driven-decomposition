@@ -1,17 +1,19 @@
 # AI-driven Project Estimation Workspace
 
-Рабочее пространство для оценки и декомпозиции IT-проектов. Работает через Claude Code (VS Code extension).
+Рабочее пространство для оценки и декомпозиции IT-проектов. Работает через Claude Code.
 
 ## Workflow
 
-PM кидает описание проекта → Claude проходит три этапа → на выходе ТЗ (.docx) + декомпозиция (.xlsx с GANTT).
+PM кидает описание проекта → Claude проходит четыре этапа → на выходе ТЗ (.docx) + декомпозиция (.xlsx с GANTT).
+
+Все скиллы живут в `.claude/skills/` и автоматически регистрируются в Claude Code — вызываются через `Skill tool`, не через ручное чтение SKILL.md.
 
 ### Этап 1: Анализ запроса
 Прочитай описание клиента из `input/`. Определи, достаточно ли информации для ТЗ.
 - Если достаточно → переходи к Этапу 2
 - Если нет → сформулируй уточняющие вопросы (3-6 штук, на русском)
 
-Используй скилл: `skills/analyze-request/SKILL.md`
+Вызови скилл: `analyze-request`
 
 Если информации недостаточно:
 1. Выведи уточняющие вопросы пользователю
@@ -28,8 +30,7 @@ PM кидает описание проекта → Claude проходит тр
 
 Техстек в ТЗ не включается — определяется отдельно на этапе архитектурного ревью.
 
-Используй скилл: `skills/generate-spec/SKILL.md`
-Шаблон вывода: `skills/generate-spec/references/spec-template.md`
+Вызови скилл: `generate-spec` (шаблон внутри — `.claude/skills/generate-spec/references/spec-template.md`)
 
 Сохрани результат в `output/spec.md`.
 Для конвертации в .docx: `python scripts/build_docx.py output/spec.md output/Техническое_задание.docx`
@@ -37,24 +38,36 @@ PM кидает описание проекта → Claude проходит тр
 ### Этап 3: Декомпозиция и оценка
 Декомпозируй ТЗ на задачи по модулям с оценками в днях. Каждая задача помечена фазой: `mvp` или `post-mvp`.
 
-Используй скилл: `skills/decompose-tasks/SKILL.md`
-Референс: `skills/decompose-tasks/references/estimation-guide.md`
+Вызови скилл: `decompose-tasks` (референс — `.claude/skills/decompose-tasks/references/estimation-guide.md`)
 
 Сохрани JSON в `output/decomposition.json`.
-Для генерации .xlsx: `python scripts/build_xlsx.py output/decomposition.json output/Оценка_проекта.xlsx`
+
+### Этап 3.5: Сбор параметров оценки
+Собери у PM коэффициенты проекта, ставки специалистов и маржу. K считается автоматически.
+
+Вызови скилл: `collect-estimation-params` (дефолты — `.claude/skills/collect-estimation-params/references/defaults.json`)
+
+Сохрани результат в `output/estimation_params.json`.
+
+### Этап 4: Генерация .xlsx
+```bash
+python scripts/build_xlsx.py output/decomposition.json output/Оценка_проекта.xlsx --params output/estimation_params.json
+```
+Если `--params` не передан, скрипт работает в упрощённом режиме (только дни/часы, K=1.0 или `--K <val>`).
 
 ## Структура проекта
 
 ```
 input/              — описания проектов от клиентов
-output/             — результаты: spec.md, decomposition.json, .docx, .xlsx
-skills/             — скиллы (промпты + референсы)
-  analyze-request/  — анализ полноты запроса
-  generate-spec/    — генерация трёхчастного ТЗ
-  decompose-tasks/  — декомпозиция на задачи
+output/             — результаты: spec.md, decomposition.json, estimation_params.json, .docx, .xlsx
+.claude/skills/     — проектные скиллы (авто-регистрируются в Skill tool)
+  analyze-request/            — анализ полноты запроса
+  generate-spec/              — генерация четырёхчастного ТЗ
+  decompose-tasks/            — декомпозиция на задачи
+  collect-estimation-params/  — сбор коэффициентов, ставок, маржи
 scripts/            — утилиты для генерации документов
   build_docx.py     — markdown → .docx
-  build_xlsx.py     — decomposition.json → .xlsx с GANTT
+  build_xlsx.py     — decomposition.json + estimation_params.json → .xlsx с GANTT
 ```
 
 ## Архивация проекта

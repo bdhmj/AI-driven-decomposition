@@ -1,0 +1,27 @@
+{
+  "mandatory_specialists": ["PM", "DevOps", "QA"],
+  "coefficients": {
+    "debug_pct": 20,
+    "code_review_hours": 1,
+    "communication_hours": 3,
+    "qa_pct": 0,
+    "risk_buffer_pct": 20,
+    "devops_pct": 0,
+    "pm_pct": 30
+  },
+  "rates": {
+    "DevOps": 25,
+    "Smart contract": 30,
+    "Backend": 25,
+    "Frontend": 20,
+    "QA": 15,
+    "Manual QA": 15,
+    "UX/UI дизайнер": 20,
+    "Аналитик": 20,
+    "Mobile Developer": 25,
+    "Data Engineer": 30,
+    "PM": 25
+  },
+  "margin_pct": 100,
+  "currency": "$"
+}
