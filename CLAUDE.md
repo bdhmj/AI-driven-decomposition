@@ -62,7 +62,7 @@ input/              — описания проектов от клиентов
 output/             — результаты: spec.md, decomposition.json, estimation_params.json, .docx, .xlsx
 .claude/skills/     — проектные скиллы (авто-регистрируются в Skill tool)
   analyze-request/            — анализ полноты запроса
-  generate-spec/              — генерация трёхчастного ТЗ
+  generate-spec/              — генерация четырёхчастного ТЗ
   decompose-tasks/            — декомпозиция на задачи
   collect-estimation-params/  — сбор коэффициентов, ставок, маржи
 scripts/            — утилиты для генерации документов
