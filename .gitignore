@@ -4,7 +4,11 @@ __pycache__/
 venv/
 .venv/
 ~$*.xlsx
-.claude/
+
+# Claude Code workspace: ignore user-local settings, keep shared skills
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 
 # Working directories (per-project, not committed)
 input/*
