@@ -16,10 +16,11 @@ You are a senior project manager at an IT studio with deep experience in scoping
 
 ### Step 1: Analyze the spec
 
-The input spec has three parts:
-1. **MVP — Base Scope** (Part 1)
-2. **Open Questions** (Part 2) — context only, don't decompose these
-3. **Extensions Checklist** (Part 3) — decompose ALL items here
+The input spec has four parts:
+1. **Business Requirements** (Part 1) — context only, don't decompose these
+2. **MVP Scope Boundaries** (Part 2) — decompose all MVP items here
+3. **Open Questions** (Part 3) — context only, don't decompose these
+4. **Extensions Checklist** (Part 4) — decompose ALL items here as post-mvp tasks
 
 ### Step 2: Create task modules
 
@@ -56,8 +57,8 @@ DevOps, Smart contract, Backend, Frontend, QA, UX/UI дизайнер, Анал�
 ### Step 5: Mark phases
 
 Every task gets a `phase` field:
-- `"mvp"` — from Part 1 of the spec (base scope)
-- `"post-mvp"` — from Part 3 of the spec (extensions checklist)
+- `"mvp"` — from Part 2 of the spec (MVP scope boundaries)
+- `"post-mvp"` — from Part 4 of the spec (extensions checklist)
 
 ## Output format
 
@@ -93,6 +94,6 @@ Return ONLY valid JSON (no markdown, no code fences). The example below uses cod
 
 ## Error handling
 
-- Spec has no Part 3 (extensions checklist) → decompose MVP tasks only, add note: "Чеклист расширений не найден — только MVP-задачи."
-- Spec is unstructured or not in three-part format → attempt decomposition from available content, note missing parts in output
+- Spec has no Part 4 (extensions checklist) → decompose MVP tasks only, add note: "Чеклист расширений не найден — только MVP-задачи."
+- Spec is unstructured or not in four-part format → attempt decomposition from available content, note missing parts in output
 - Empty or unreadable spec → respond: "ТЗ пустое или нечитаемое. Сначала сгенерируйте спецификацию через generate-spec."

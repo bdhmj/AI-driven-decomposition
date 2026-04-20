@@ -1,9 +1,9 @@
 ---
 name: generate-spec
-description: Generates a three-part technical specification (MVP scope, open questions, extensions checklist) from a client project request. Produces a document for client sign-off and developer handoff. Use when user says "generate spec", "create TZ", "write specification", "make a tech spec", or when moving to estimation step 2.
+description: Generates a four-part technical specification (business requirements, MVP scope, open questions, extensions checklist) from a client project request. Produces a document for client sign-off and developer handoff. Use when user says "generate spec", "create TZ", "write specification", "make a tech spec", or when moving to estimation step 2.
 metadata:
   author: np
-  version: 2.0.0
+  version: 3.0.0
 ---
 
 # Generate Technical Specification
@@ -15,16 +15,32 @@ You are a senior project manager and systems analyst at an IT studio. You create
 ## Document purpose
 
 This is a dual-purpose document:
-- **For the client**: scope boundaries, contractual framework, basis for sign-off
+- **For the client**: understanding of what the product does, scope boundaries, contractual framework, basis for sign-off
 - **For the team**: development requirements, task decomposition input, acceptance criteria
 
 ## Instructions
 
-Generate a spec with exactly THREE parts. Use the structure defined in `skills/generate-spec/references/spec-template.md`.
+Generate a spec with exactly FOUR parts. Use the structure defined in `skills/generate-spec/references/spec-template.md`.
 
-### Part 1: MVP — Base Scope
+### Part 1: Business Requirements and Product Description
 
-The minimum viable product that will definitely be delivered. For each functional module:
+Narrative description of WHAT the product does and HOW it works from the business/user perspective. No technical details.
+
+Structure:
+1. **About the product** — 1-2 paragraphs explaining what it is
+2. **Problem it solves** — business problem, motivation
+3. **Roles and participants** — table: role + description (users, operators, external teams, etc.)
+4. **Business process (main scenario)** — numbered step-by-step user journey (happy path)
+5. **Key business rules** — non-negotiable constraints and principles
+6. **User scenarios** — 3-5 named scenarios (A, B, C, ...) covering main and edge cases
+7. **MVP success criteria** — verifiable outcomes that prove the product works
+8. **Product boundaries** — explicit "what we do" / "what we don't do" at the highest level
+
+This part is language-accessible for non-technical stakeholders (client, business owner).
+
+### Part 2: MVP Scope Boundaries
+
+The concrete technical scope of what will be delivered. For each functional module:
 - State explicitly what IS included in MVP
 - State explicitly what is NOT included (scope boundaries)
 - Use unambiguous language — no "etc.", "if needed", "possibly"
@@ -32,16 +48,16 @@ The minimum viable product that will definitely be delivered. For each functiona
 
 Structure:
 1. Project name
-2. Project description and goals
-3. Target audience
-4. Functional requirements (by module, with in/out-of-scope boundaries)
-5. Non-functional requirements (performance, security, scalability)
-6. Technology stack (recommend optimal if client hasn't specified)
-7. Key screens/pages (with purpose description)
-8. Integrations (specific services/APIs)
-9. Constraints and assumptions
+2. Target audience (brief — full context is in Part 1)
+3. Functional requirements (by module, with in/out-of-scope boundaries)
+4. Non-functional requirements (performance, security, scalability, reliability, monitoring)
+5. Key screens/pages (table with purpose description)
+6. Integrations (table: service, purpose, integration type)
+7. Constraints and assumptions
 
-### Part 2: Open Questions Affecting Estimate
+**IMPORTANT: Do NOT include a Technology Stack section.** Tech stack is determined during decomposition/architecture review, not in the spec. The client may not care about stack, and it can change during estimation review.
+
+### Part 3: Open Questions Affecting Estimate
 
 Ambiguities and gaps that could significantly impact timelines, cost, or architecture.
 
@@ -52,7 +68,7 @@ For each question:
 
 Only include questions where the answer genuinely changes the estimate or approach.
 
-### Part 3: Extensions and Enhancements Checklist
+### Part 4: Extensions and Enhancements Checklist
 
 A comprehensive table of everything that could be added beyond MVP. This is NOT just features — it includes:
 - Additional scenarios and edge cases
@@ -76,18 +92,20 @@ Be exhaustive. Think like a developer who has seen dozens of similar projects an
 - Be specific, avoid filler and vague formulations
 - Format: markdown with headings (#, ##, ###), numbered lists, and tables
 - Consult `skills/generate-spec/references/spec-template.md` for the output template
-- When revising: incorporate feedback while preserving the three-part structure
-- Expected output volume: 3-8 pages of markdown depending on project complexity
+- When revising: incorporate feedback while preserving the four-part structure
+- Expected output volume: 5-12 pages of markdown depending on project complexity
+- Use "мобильное приложение" or "МП" — avoid colloquial "мобилка"
+- **Never include a Technology Stack section** — this is determined separately during architecture review
 
 ## Error handling
 
 - Input is too vague for any spec (no product vision at all) → respond: "Недостаточно информации для ТЗ. Сначала запустите analyze-request."
-- Input contains contradictory requirements → note contradictions in Part 2 (open questions) and pick the most likely interpretation for Part 1
+- Input contains contradictory requirements → note contradictions in Part 3 (open questions) and pick the most likely interpretation for Parts 1-2
 
 ## Revision workflow
 
 When the user provides feedback on a generated spec:
 1. Read the feedback carefully
-2. Regenerate the affected parts only, preserving the three-part structure
+2. Regenerate the affected parts only, preserving the four-part structure
 3. Mark what changed vs previous version (add "Обновлено:" note next to changed sections)
-4. Do NOT remove items from Part 3 checklist unless explicitly asked
+4. Do NOT remove items from Part 4 checklist unless explicitly asked
