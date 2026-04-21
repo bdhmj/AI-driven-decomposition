@@ -2,7 +2,11 @@
 
 Usage:
     python scripts/build_xlsx.py input/decomposition.json output/Оценка_проекта.xlsx \
-        --params output/estimation_params.json [--name "Project Name"]
+        --params output/estimation_params.json [--name "Project Name"] [--include-post-mvp]
+
+By default only tasks with phase="mvp" are counted in estimates, costs
+and the Gantt. Pass --include-post-mvp to count all tasks (MVP + Part 4
+extensions from the ТЗ).
 
 In full mode (--params) generates 6 sheets:
   "Для клиента", "Sales (Итоги оценки)", "Оценка",
@@ -155,6 +159,20 @@ def _apply_border_rect(ws, r1, c1, r2, c2, border=BORDER_THIN):
             ws.cell(row=r, column=c).border = border
 
 
+def _filter_mvp_only(modules: list[dict]) -> list[dict]:
+    """Keep only tasks with phase == "mvp".
+    Drop modules that end up empty. Tasks missing a phase field are treated
+    as MVP (safer default — better to include than silently skip).
+    """
+    filtered = []
+    for m in modules:
+        mvp_tasks = [t for t in m.get("tasks", [])
+                     if t.get("phase", "mvp") == "mvp"]
+        if mvp_tasks:
+            filtered.append({**m, "tasks": mvp_tasks})
+    return filtered
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Build entry point
 # ═══════════════════════════════════════════════════════════════════════
@@ -164,12 +182,19 @@ def build_report_xlsx(
     modules: list[dict],
     K: float = 1.0,
     params: dict | None = None,
+    include_post_mvp: bool = False,
 ) -> io.BytesIO:
     """Build project estimation xlsx.
 
     - With `params`: 6-sheet formula-driven output (PM sheet is source of truth).
     - Without `params`: legacy 3-sheet days-only output.
+    - By default only MVP-phase tasks are counted in estimates and Gantt;
+      post-MVP tasks (from Часть 4 ТЗ) are excluded. Pass include_post_mvp=True
+      to include everything.
     """
+    if not include_post_mvp:
+        modules = _filter_mvp_only(modules)
+
     wb = Workbook()
 
     if params is None:
@@ -1551,10 +1576,14 @@ if __name__ == "__main__":
     elif isinstance(data, dict) and "project_name" in data:
         project_name = data["project_name"]
 
-    result = build_report_xlsx(project_name, modules, K, params)
+    include_post_mvp = "--include-post-mvp" in sys.argv
+
+    result = build_report_xlsx(project_name, modules, K, params,
+                               include_post_mvp=include_post_mvp)
 
     with open(sys.argv[2], "wb") as f:
         f.write(result.read())
 
     mode = "full (6 sheets, formulas)" if params else "simple (3 sheets, days only)"
-    print(f"Saved: {sys.argv[2]} [{mode}]")
+    scope = "MVP+Post-MVP" if include_post_mvp else "MVP-only"
+    print(f"Saved: {sys.argv[2]} [{mode}, {scope}]")
