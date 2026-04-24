@@ -23,5 +23,6 @@
     "PM": 25
   },
   "margin_pct": 100,
+  "generate_gantt": true,
   "currency": "$"
 }
