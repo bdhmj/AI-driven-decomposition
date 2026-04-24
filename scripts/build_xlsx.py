@@ -2,7 +2,11 @@
 
 Usage:
     python scripts/build_xlsx.py input/decomposition.json output/Оценка_проекта.xlsx \
-        --params output/estimation_params.json [--name "Project Name"]
+        --params output/estimation_params.json [--name "Project Name"] [--include-post-mvp]
+
+By default only tasks with phase="mvp" are counted in estimates, costs
+and the Gantt. Pass --include-post-mvp to count all tasks (MVP + Part 4
+extensions from the ТЗ).
 
 In full mode (--params) generates 6 sheets:
   "Для клиента", "Sales (Итоги оценки)", "Оценка",
@@ -155,6 +159,20 @@ def _apply_border_rect(ws, r1, c1, r2, c2, border=BORDER_THIN):
             ws.cell(row=r, column=c).border = border
 
 
+def _filter_mvp_only(modules: list[dict]) -> list[dict]:
+    """Keep only tasks with phase == "mvp".
+    Drop modules that end up empty. Tasks missing a phase field are treated
+    as MVP (safer default — better to include than silently skip).
+    """
+    filtered = []
+    for m in modules:
+        mvp_tasks = [t for t in m.get("tasks", [])
+                     if t.get("phase", "mvp") == "mvp"]
+        if mvp_tasks:
+            filtered.append({**m, "tasks": mvp_tasks})
+    return filtered
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Build entry point
 # ═══════════════════════════════════════════════════════════════════════
@@ -164,12 +182,19 @@ def build_report_xlsx(
     modules: list[dict],
     K: float = 1.0,
     params: dict | None = None,
+    include_post_mvp: bool = False,
 ) -> io.BytesIO:
     """Build project estimation xlsx.
 
     - With `params`: 6-sheet formula-driven output (PM sheet is source of truth).
     - Without `params`: legacy 3-sheet days-only output.
+    - By default only MVP-phase tasks are counted in estimates and Gantt;
+      post-MVP tasks (from Часть 4 ТЗ) are excluded. Pass include_post_mvp=True
+      to include everything.
     """
+    if not include_post_mvp:
+        modules = _filter_mvp_only(modules)
+
     wb = Workbook()
 
     if params is None:
@@ -263,6 +288,7 @@ def _build_full_mode(wb: Workbook, project_name: str, modules: list[dict], param
     coefficients = params.get("coefficients", {})
     margin_pct = params.get("margin_pct", 0)  # markup %
     currency = params.get("currency", "$")
+    generate_gantt = params.get("generate_gantt", True)
 
     # K for python-side Gantt calc (matches k_expr() numerically)
     K = calc_K(coefficients)
@@ -272,14 +298,17 @@ def _build_full_mode(wb: Workbook, project_name: str, modules: list[dict], param
     task_to_est_row: list[int] = []
 
     # Sheet order (left→right in Excel tab bar):
-    #   Для клиента → Sales → Оценка → PM → Для Битрикса → GANTT
+    #   Для клиента → Sales → Оценка → PM → Для Битрикса → GANTT (optional)
     # Openpyxl adds sheets in creation order; `wb.active` is the first.
+    # Gantt is a read-only consumer of decomposition + K — skipping it does not
+    # affect any numbers on other sheets.
     _build_client_sheet(wb, project_name, modules, roster, rates, margin_pct, currency, task_to_est_row)
     _build_sales_sheet(wb, project_name, roster, rates, margin_pct, currency)
     _build_estimation_sheet(wb, modules, roster, coefficients, task_to_est_row)
     _build_pm_sheet(wb, roster, rates, coefficients, currency)
     _build_bitrix_sheet(wb, modules, task_to_est_row)
-    _build_gantt_sheet(wb, modules, K, roster)
+    if generate_gantt:
+        _build_gantt_sheet(wb, modules, K, roster)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -984,10 +1013,11 @@ def _build_client_sheet(wb, project_name, modules, roster, rates, markup_pct, cu
     ws.cell(row=8, column=2,
             value=f"Актуально на: {date.today().strftime('%d.%m.%Y')}").font = font_date
 
-    # Summary block (B9:D10) — all three values via formulas
+    # Summary block (B9:E10) — four values via formulas
     ws.row_dimensions[9].height = 30
     for col, val in [(2, "Команда проекта,\nчеловек"), (3, "Длительность проекта,\nчасы"),
-                     (4, f"Стоимость, {currency}")]:
+                     (4, f"Стоимость, {currency}"),
+                     (5, "Срок MVP,\nнедель (≈ мес)")]:
         c = ws.cell(row=9, column=col, value=val)
         c.font = font_header
         c.fill = FILL_ORANGE
@@ -1001,7 +1031,12 @@ def _build_client_sheet(wb, project_name, modules, roster, rates, markup_pct, cu
     ws.cell(row=10, column=3).number_format = "0"
     ws.cell(row=10, column=4, value=f"={SALES_REF}!J{SALES_TOTAL_ROW}")
     ws.cell(row=10, column=4).number_format = f"#,##0"
-    for col in (2, 3, 4):
+    # Duration = critical path = max specialist weeks on PM sheet (excludes Manual QA and PM rows).
+    # Decomposition is already MVP-filtered upstream, so this is strictly MVP scope.
+    max_weeks = f"MAX({PM_REF}!I{PM_SPEC_START}:I{PM_SPEC_END})"
+    ws.cell(row=10, column=5,
+            value=f'=TEXT({max_weeks},"0")&" нед (≈ "&TEXT({max_weeks}/4.33,"0.0")&" мес)"')
+    for col in (2, 3, 4, 5):
         c = ws.cell(row=10, column=col)
         c.font = font_normal
         c.alignment = ALIGN_CENTER
@@ -1551,10 +1586,22 @@ if __name__ == "__main__":
     elif isinstance(data, dict) and "project_name" in data:
         project_name = data["project_name"]
 
-    result = build_report_xlsx(project_name, modules, K, params)
+    include_post_mvp = "--include-post-mvp" in sys.argv
+
+    # CLI override for Gantt (params.generate_gantt is the default source)
+    if "--no-gantt" in sys.argv and params is not None:
+        params["generate_gantt"] = False
+
+    result = build_report_xlsx(project_name, modules, K, params,
+                               include_post_mvp=include_post_mvp)
 
     with open(sys.argv[2], "wb") as f:
         f.write(result.read())
 
-    mode = "full (6 sheets, formulas)" if params else "simple (3 sheets, days only)"
-    print(f"Saved: {sys.argv[2]} [{mode}]")
+    if params:
+        n_sheets = 6 if params.get("generate_gantt", True) else 5
+        mode = f"full ({n_sheets} sheets, formulas)"
+    else:
+        mode = "simple (3 sheets, days only)"
+    scope = "MVP+Post-MVP" if include_post_mvp else "MVP-only"
+    print(f"Saved: {sys.argv[2]} [{mode}, {scope}]")

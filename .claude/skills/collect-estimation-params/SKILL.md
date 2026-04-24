@@ -125,9 +125,28 @@ Loop until `ок`. Parse `N VALUE` → update rate N.
 
 Loop until `ок`. Parse single number → update `margin_pct`.
 
-### Step 6: Save output
+### Step 6: Gantt chart (block 4)
 
-Save to `output/estimation_params.json` — include `specialists` field (final roster in order):
+Ask whether to include the Gantt visualization sheet in the xlsx:
+
+```
+🗓 GANTT-CHART
+
+Нужен ли лист с графиком Ганта в xlsx? Отдельный лист-визуализация сроков по задачам.
+На цифры оценки (стоимость, сроки, недели) это не влияет — Gantt только рисует
+уже посчитанные данные.
+
+y / да / ок — включить (по умолчанию)
+n / нет     — пропустить (xlsx на 5 листов без GANTT Chart)
+```
+
+Parse `y / да / ok / ок / yes` → `generate_gantt: true`. Parse `n / нет / no / skip` → `generate_gantt: false`. On unrecognised input — re-ask.
+
+Default if skipped: `true`.
+
+### Step 7: Save output
+
+Save to `output/estimation_params.json` — include `specialists` field (final roster in order) and `generate_gantt` flag:
 
 ```json
 {
@@ -152,6 +171,7 @@ Save to `output/estimation_params.json` — include `specialists` field (final r
     "PM": 25
   },
   "margin_pct": 100,
+  "generate_gantt": true,
   "currency": "$"
 }
 ```
